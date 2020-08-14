@@ -68,12 +68,10 @@ public class Ensemble {
 
         Map<Double, Integer> numeroVotos = new HashMap<>();
 
-        List<String> votos = new ArrayList<>();
         Example ex = new Example(ins.toDoubleArray(), true);
         for (int i = 0; i < ensembleOfClassifiers.size(); i++) {
             Map<Double, List<SPFMiC>> classifier = this.ensembleOfClassifiers.get(i);
             List<SPFMiC> allSPFMiCSOfClassifier = this.getAllSPFMiCsFromClassifier(classifier);
-//            List<Double> allMemberships = FuzzyFunctions.calculateMembershipMatrix(ex, allSPFMiCSOfClassifier, this.K, this.fuzzification);
             double rotuloVotado = this.classify(allSPFMiCSOfClassifier, ex);
             if(numeroVotos.containsKey(rotuloVotado)) {
                 numeroVotos.replace(rotuloVotado, numeroVotos.get(rotuloVotado) + 1);
@@ -128,37 +126,6 @@ public class Ensemble {
         }
         this.ensembleOfClassifiers.remove(index);
     }
-
-    public List<Example> trainNewClassifier(List<Example> chunk) throws Exception {
-        List<Example> newChunk = new ArrayList<>();
-        if(this.ensembleOfClassifiers.size() >= tamanhoMaximo) {
-            this.removeWorstClassifier(chunk);
-        }
-        Map<Double, List<Example>> examplesByClass = this.separateByClasses(chunk);
-        List<Double> classes = new ArrayList<>();
-        Map<Double, List<SPFMiC>> classifier = new HashMap<>();
-        classes.addAll(examplesByClass.keySet());
-        for(int j=0; j<examplesByClass.size(); j++) {
-            if(examplesByClass.get(classes.get(j)).size() >= this.K) {
-                if(!this.knowLabels.contains(classes.get(j))) {
-                    this.knowLabels.add(classes.get(j));
-                }
-                FuzzyKMeansClusterer clusters = FuzzyFunctions.fuzzyCMeans(examplesByClass.get(classes.get(j)), this.K, this.fuzzification);
-                List<SPFMiC> spfmics = FuzzyFunctions.separateExamplesByClusterClassifiedByFuzzyCMeans(examplesByClass.get(classes.get(j)), clusters, classes.get(j), this.theta, this.alpha, this.minWeight);
-                classifier.put(classes.get(j), spfmics);
-            } else {
-                newChunk.addAll(examplesByClass.get(classes.get(j)));
-            }
-        }
-        this.ensembleOfClassifiers.add(classifier);
-        return newChunk;
-    }
-
-//    private FuzzyKMeansClusterer fuzzyCMeans(List<Example> examples, int K) {
-//        FuzzyKMeansClusterer fuzzyClusterer = new FuzzyKMeansClusterer(K, this.fuzzification);
-//        fuzzyClusterer.cluster(examples);
-//        return fuzzyClusterer;
-//    }
 
     private Map<Double, List<Example>> separateByClasses(List<Example> chunk) {
         Map<Double, List<Example>> examplesByClass = new HashMap<>();
@@ -226,31 +193,7 @@ public class Ensemble {
         maxVal = Collections.max(todasTipicidades);
         spfMiCSFinal = spfMiCS;
         indexMax = todasTipicidades.indexOf(maxVal);
-
-//        Double maxVal2 = Collections.min(distancias);
-//        int indexMax2 = distancias.indexOf(maxVal2);
-//        System.out.println("Maior rótulo: " + spfMiCS.get(indexMax).getRotulo());
-//        double rotulo = spfMiCS.get(indexMax).getRotulo();
-//                spfMiCS.remove(spfMiCS.get(indexMax));
-//        tipicidades.remove(maxVal);
-//        Double maxVal2 = Collections.max(tipicidades);
-//        int indexMax2 = tipicidades.indexOf(maxVal2);
-//        System.out.println("Segundo Maior rótulo: " + spfMiCS.get(indexMax2).getRotulo());
-//        tipicidades.remove(maxVal2);
-//        spfMiCS.remove(spfMiCS.get(indexMax2));
-//        Double maxVal3 = Collections.max(tipicidades);
-//        int indexMax3 = tipicidades.indexOf(maxVal3);
-//        System.out.println("Terceiro Maior rótulo: " + spfMiCS.get(indexMax3).getRotulo());
-//        tipicidades.remove(maxVal3);
-//        spfMiCS.remove(spfMiCS.get(indexMax3));
-//        System.out.println("Tipicidade maxima: " + maxVal);
-//        double limiar = (this.allTipMax.getValorMedio() - this.thetaAdapter);
-//        if(maxVal >= limiar) {
-//            this.allTipMax.addValorTipicidade(maxVal);
-        double rotulo = spfMiCSFinal.get(indexMax).getRotulo();
-        int index = this.ensembleOfClassifiers.get(0).get(rotulo).indexOf(spfMiCSFinal.get(indexMax));
-//        this.ensembleOfClassifiers.get(0).get(rotulo).get(index).addPoint(example, allMemberships.get(indexMax), maxVal, this.fuzzification, this.N);
-        return rotulo;
+        return spfMiCSFinal.get(indexMax).getRotulo();
     }
 
     public double classifyWorst(List<SPFMiC> spfMiCS, Example example) {
@@ -258,7 +201,6 @@ public class Ensemble {
         List<Double> todasTipicidades = new ArrayList<>();
         List<Double> distancias = new ArrayList<>();
         List<SPFMiC> spfmicsOk = new ArrayList<>();
-        double menorDistancia = Double.MAX_VALUE;
         for(int i=0; i<spfMiCS.size(); i++) {
             todasTipicidades.add(spfMiCS.get(i).calculaTipicidade(example.getPonto(), this.N, this.K));
             double distancia = DistanceMeasures.calculaDistanciaEuclidiana(example, spfMiCS.get(i).getCentroide());
