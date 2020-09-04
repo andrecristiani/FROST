@@ -50,7 +50,6 @@ public class FuzzyFunctions {
             }
             double fs = numerador / denominador;
             silhuetas.add(fs);
-            System.out.println(fs);
         }
         return silhuetas;
     }

@@ -27,6 +27,7 @@ public class Ensemble {
     public double thetaAdapter = 0;
     public List<Map<Double, List<SPFMiC>>> ensembleOfClassifiers = new ArrayList<>();
     public List<Double> knowLabels = new ArrayList<>();
+    public double timeOffline;
 
     public Ensemble(String dataset, String caminho, int tamanhoMaximo, double fuzzification, double alpha, double theta, int C, int K, int minWeight) {
         this.dataset = dataset;

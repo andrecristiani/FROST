@@ -5,6 +5,7 @@ import FuzzyProject.Fuzz.Models.*;
 import FuzzyProject.Fuzz.Models.Evaluation.ClassicMeasures;
 import FuzzyProject.Fuzz.Utils.DistanceMeasures;
 import FuzzyProject.Fuzz.Utils.FuzzyFunctions;
+import FuzzyProject.Fuzz.Utils.HandlesFiles;
 import org.apache.commons.math3.ml.clustering.CentroidCluster;
 import org.apache.commons.math3.ml.clustering.FuzzyKMeansClusterer;
 import weka.core.Attribute;
@@ -12,6 +13,7 @@ import weka.core.Instance;
 import weka.core.Instances;
 import weka.core.converters.ConverterUtils.DataSource;
 
+import java.io.IOException;
 import java.util.*;
 
 public class OnlinePhase {
@@ -21,20 +23,25 @@ public class OnlinePhase {
     int erros = 0;
     int errosTotal = 0;
     Ensemble ensemble;
-
+    public Map<Double, Integer> unkRi = new HashMap<>();
     int novidadesClassificadas = 0;
-    int exemplosClassificados = 0;
+    int classifiedExamples = 0;
+    public Map<Double, Integer> exc = new HashMap<>();
     public int fp = 0;
     public int fn = 0;
     public int fe = 0;
     public int nc = 0;
     public int n = 0;
 
-    public ClassicMeasures initialize(String caminho, String dataset, Ensemble comite, int latencia, int tChunk, int T, int kShort, double phi) {
-        ClassicMeasures c = null;
+    public int ncTest = 0;
+    public int ncTotal = 0;
+
+    public void initialize(String caminho, String dataset, Ensemble comite, int latencia, int tChunk, int T, int kShort, double phi, int nExecution) throws IOException {
+        ArrayList<ClassicMeasures> classicMeasuresArrayList = new ArrayList<>();
         this.ensemble = comite;
         DataSource source;
         Instances data;
+        long start = 0;
         try {
             source = new DataSource(caminho + dataset + "-instances.arff");
             data = source.getDataSet();
@@ -44,40 +51,77 @@ public class OnlinePhase {
                 atts.add(data.attribute(i));
             }
             List<Example> unkMem = new ArrayList<>();
-
-            for(int i=0, j=0, h=0; i<data.size(); i++, j++, h++) {
+            start = System.currentTimeMillis();
+            for(int i=0, h=0; i<data.size(); i++, h++) {
                 Instance ins = data.get(i);
                 Example exemplo = new Example(ins.toDoubleArray(), true);
+
+                if(exc.containsKey(exemplo.getRotuloVerdadeiro())) {
+                    exc.replace(exemplo.getRotuloVerdadeiro(), exc.get(exemplo.getRotuloVerdadeiro()) + 1);
+                } else {
+                    exc.put(exemplo.getRotuloVerdadeiro(), 1);
+                }
+
                 double rotulo = comite.classify(ins);
                 exemplo.setRotuloClassificado(rotulo);
                 if(exemplo.getRotuloVerdadeiro() == 3) {
-                    nc++;
+                    ncTest++;
                 }
                 n++;
                 if(rotulo == exemplo.getRotuloVerdadeiro()) {
                     acertos++;
                     acertosTotal++;
+                    classifiedExamples++;
                 } else if (rotulo == -1) {
+                    if(unkRi.containsKey(exemplo.getRotuloVerdadeiro())) {
+                        unkRi.replace(exemplo.getRotuloVerdadeiro(), unkRi.get(exemplo.getRotuloVerdadeiro()) + 1);
+                    } else {
+                        unkRi.put(exemplo.getRotuloVerdadeiro(),1);
+                    }
                     unkMem.add(exemplo);
                     if(unkMem.size() >= T) {
                         unkMem = this.newBinaryNoveltyDetection(unkMem, kShort, phi, T);
                     }
                 } else {
-                    erros++;
-                    errosTotal++;
+                    if(!ensemble.knowLabels.contains(rotulo)) {
+                        this.fn++;
+                        errosTotal++;
+                    } else {
+                        fe++;
+                        erros++;
+                        errosTotal++;
+                    }
+                    classifiedExamples++;
+                }
+
+                if(h == 1000) {
+                    ClassicMeasures cM = new ClassicMeasures();
+                    cM.calcMeasures(fn, fp, fe, nc, classifiedExamples, unkRi, exc);
+                    unkRi.clear();
+                    exc.clear();
+                    fp = 0;
+                    fn = 0;
+                    fe = 0;
+                    nc = 0;
+                    h=0;
+                    classifiedExamples = 0;
+                    classicMeasuresArrayList.add(cM);
                 }
             }
-            c = new ClassicMeasures(fn, fp, fe, nc, n);
-            System.out.println("Fnew: " + c.getFnew() + " Mnew: " + c.getMnew() + " Err: " + c.getErr() + " Acurácia: " + c.getAccuracy());
         } catch (Exception ex) {
             System.out.println(ex);
             System.out.println(ex.getStackTrace());
         }
-        return c;
+        ClassicMeasures cM = new ClassicMeasures();
+        cM.calcMeasures(fn, fp, fe, nc, classifiedExamples, unkRi, exc);
+        classicMeasuresArrayList.add(cM);
+        long elapsed = System.currentTimeMillis() - start;
+        double timeInSeconds = Double.parseDouble(String.valueOf(elapsed))/1000;
+        System.out.println("Acertos: " + acertosTotal + ", Erros: " + errosTotal);
+        HandlesFiles.salvaPredicoes(classicMeasuresArrayList, dataset, nExecution, ensemble.timeOffline, timeInSeconds, acertosTotal, errosTotal);
     }
 
     private List<Example> newBinaryNoveltyDetection(List<Example> listaDesconhecidos, int kCurto, double phi, int T) {
-//        System.out.println("Executando DN");
         int minWeight = T/4;
         FuzzyKMeansClusterer clusters = FuzzyFunctions.fuzzyCMeans(listaDesconhecidos, kCurto, this.ensemble.fuzzification);
         List<CentroidCluster> centroides = clusters.getClusters();
@@ -140,14 +184,24 @@ public class OnlinePhase {
                 for(int j=0; j<examplesOfCluster.size(); j++) {
                     examplesOfCluster.get(j).setRotuloClassificado(sfMiCS.get(i).getRotulo());
                     novidadesClassificadas++;
-                    exemplosClassificados++;
+                    classifiedExamples++;
                     if (this.ensemble.knowLabels.contains(examplesOfCluster.get(j).getRotuloVerdadeiro()) && examplesOfCluster.get(j).getRotuloClassificado() == -2) {
                         fp++;
+                        erros++;
                         errosTotal++;
                     } else if (this.ensemble.knowLabels.contains(examplesOfCluster.get(j).getRotuloVerdadeiro()) && examplesOfCluster.get(j).getRotuloClassificado() != examplesOfCluster.get(j).getRotuloVerdadeiro()) {
                         fe++;
                         errosTotal++;
+                        erros++;
+                    } else if (!this.ensemble.knowLabels.contains(examplesOfCluster.get(j).getRotuloVerdadeiro()) && examplesOfCluster.get(j).getRotuloClassificado() != -2) {
+                        fn++;
+                        errosTotal++;
+                        erros++;
                     } else {
+                        if(examplesOfCluster.get(j).getRotuloClassificado() == -2) {
+                            nc++;
+                            ncTotal++;
+                        }
                         acertosTotal++;
                     }
                     listaDesconhecidos.remove(examplesOfCluster.get(j));

@@ -10,16 +10,24 @@ import java.util.StringTokenizer;
 
 public class HandlesFiles {
 
-    public static void salvaPredicoes(List<ClassicMeasures> measures, String arquivo) throws IOException {
+    public static void salvaPredicoes(List<ClassicMeasures> measures, String arquivo, int nExecution, double timeOffline, double timeToProcess, int hits, int misses) throws IOException {
         FileWriter writer;
         BufferedWriter buf_writer;
         String current = (new File(".")).getCanonicalPath();
-        writer = new FileWriter(current + "/" + arquivo + "/" + arquivo + "-33-predctions" + ".txt");
+        writer = new FileWriter(current + "/" + arquivo + "/" + arquivo + "-"+ nExecution +"-predctions" + ".txt");
         buf_writer = new BufferedWriter(writer);
-        buf_writer.write("Fnew,Mnew,Err,Accuracy");
+        buf_writer.write("Hits: " + hits);
+        buf_writer.newLine();
+        buf_writer.write("Misses: " + misses);
+        buf_writer.newLine();
+        buf_writer.write("Offline Time: " + timeOffline);
+        buf_writer.newLine();
+        buf_writer.write("Process Time: " + timeToProcess);
+        buf_writer.newLine();
+        buf_writer.write("Fnew,Mnew,Err,Accuracy,UnkR");
         buf_writer.newLine();
         for(int i = 0; i<measures.size(); i++) {
-            String ex = measures.get(i).getFnew()+ "," + measures.get(i).getMnew()+ "," + measures.get(i).getErr()+ "," + measures.get(i).getAccuracy();
+            String ex = measures.get(i).getFnew()+ "," + measures.get(i).getMnew()+ "," + measures.get(i).getErr()+ "," + measures.get(i).getAccuracy() + "," + measures.get(i).getUnkR();
             buf_writer.write(ex);
             buf_writer.newLine();
         }
